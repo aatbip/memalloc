@@ -1,1 +1,1 @@
-// memory allocator
+// memalloc - a general purpose memory allocator
