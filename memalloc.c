@@ -12,6 +12,7 @@ typedef struct _th_cache {
   // void *fast_bin[63];
   int a;
   struct _th_cache *next;
+  struct _th_cache *prev;
 } th_cache_t;
 
 typedef struct _memalloc_ctx {
@@ -21,7 +22,10 @@ typedef struct _memalloc_ctx {
   pthread_once_t once;
   /*Bitmap: from LSB, first bit (init bit)- set if struct is initialized*/
   uint8_t bm;
-  void *block;
+  /*Beginning of the heap memory region*/
+  void *heap;
+  /*Pointer to the top of the used heap*/
+  void *top;
 } memalloc_ctx_t;
 
 static memalloc_ctx_t memalloc_ctx;
@@ -44,7 +48,8 @@ void *memalloc(size_t size) {
     if (block == (void *)-1) {
       perror("sbrk");
     }
-    memalloc_ctx.block = block;
+    memalloc_ctx.heap = block;
+    memalloc_ctx.top = block;
   }
   int c = pthread_once(&memalloc_ctx.once, create_key);
   if (c != 0) {
@@ -54,11 +59,13 @@ void *memalloc(size_t size) {
   tcache = pthread_getspecific(memalloc_ctx.th_key);
   // allocate
   if (!tcache) {
-    tcache = memalloc_ctx.block;
+    tcache = memalloc_ctx.top;
+    tcache->next = memalloc_ctx.top + sizeof(th_cache_t);
     int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
     if (c != 0) {
       perror("pthread_setspecific");
     }
+    memalloc_ctx.top = memalloc_ctx.top + sizeof(th_cache_t);
   }
   tcache->a = size;
   return tcache;
@@ -76,5 +83,6 @@ int main(void) {
   pthread_t th;
   pthread_create(&th, NULL, func, NULL);
   pthread_join(th, NULL);
+  printf("from main: %d\n", t->a);
   return 0;
 }
