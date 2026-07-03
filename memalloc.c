@@ -11,6 +11,7 @@ typedef struct _th_cache {
   /*fast_bin has pointers to chunks from 16 bytes to 512 bytes incremented by 8 bytes ie 16, 24, 32 ... 512.*/
   // void *fast_bin[63];
   int a;
+  struct _th_cache *next;
 } th_cache_t;
 
 typedef struct _memalloc_ctx {
