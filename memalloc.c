@@ -9,7 +9,8 @@
 
 typedef struct _th_cache {
   /*fast_bin has pointers to chunks from 16 bytes to 512 bytes incremented by 8 bytes ie 16, 24, 32 ... 512.*/
-  void *fast_bin[63];
+  // void *fast_bin[63];
+  int a;
 } th_cache_t;
 
 typedef struct _memalloc_ctx {
@@ -58,11 +59,21 @@ void *memalloc(size_t size) {
       perror("pthread_setspecific");
     }
   }
+  tcache->a = size;
+  return tcache;
+}
 
+void *func(void *p) {
+  th_cache_t *t = memalloc(10);
+  printf("from func: %d\n", t->a);
   return NULL;
 }
 
 int main(void) {
-  memalloc(0);
+  th_cache_t *t = memalloc(99);
+  printf("from main: %d\n", t->a);
+  pthread_t th;
+  pthread_create(&th, NULL, func, NULL);
+  pthread_join(th, NULL);
   return 0;
 }
