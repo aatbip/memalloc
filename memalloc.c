@@ -27,7 +27,7 @@ typedef struct _memalloc_ctx {
   pthread_mutex_t mtx_memalloc_ctx_t;
 } memalloc_ctx_t;
 
-static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT, .mtx_memalloc_ctx_t = PTHREAD_MUTEX_INITIALIZER};
+static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
 
 void init_once(void) {
   // setup initial heap memory region of 4k
@@ -38,7 +38,12 @@ void init_once(void) {
   memalloc_ctx.heap = block;
   memalloc_ctx.top = block;
 
-  int c = pthread_key_create(&memalloc_ctx.th_key, NULL);
+  int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
+  if (c != 0) {
+    perror("pthread_mutex_init");
+  }
+
+  c = pthread_key_create(&memalloc_ctx.th_key, NULL);
   if (c != 0) {
     perror("pthread_key_create");
   }
