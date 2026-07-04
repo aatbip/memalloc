@@ -24,6 +24,8 @@ typedef struct _memalloc_ctx {
   void *heap;
   /*Pointer to the top of the used heap*/
   void *top;
+  /*Pointer to the recently created thread cache block*/
+  th_cache_t *recent_th_cache;
   pthread_mutex_t mtx_memalloc_ctx_t;
 } memalloc_ctx_t;
 
@@ -61,7 +63,15 @@ void *memalloc(size_t size) {
   if (!tcache) {
     pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
     tcache = memalloc_ctx.top;
-    tcache->next = NULL;
+    if (!memalloc_ctx.recent_th_cache) {
+      tcache->next = NULL;
+      tcache->prev = NULL;
+    } else {
+      memalloc_ctx.recent_th_cache->next = tcache;
+      tcache->prev = memalloc_ctx.recent_th_cache;
+      tcache->next = NULL;
+    }
+    memalloc_ctx.recent_th_cache = tcache;
     memalloc_ctx.top = memalloc_ctx.top + sizeof(th_cache_t);
     pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
     int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
@@ -86,7 +96,7 @@ void *func1(void *p) {
 }
 
 int main(void) {
-  pthread_t th, th1;
+  pthread_t th, th1, th2;
   pthread_create(&th, NULL, func, NULL);
   pthread_create(&th1, NULL, func1, NULL);
   pthread_join(th, NULL);
