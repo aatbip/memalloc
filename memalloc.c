@@ -1,23 +1,22 @@
 // memalloc - a general purpose memory allocator
 
 #include "memalloc.h"
+#include <math.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 typedef struct _th_cache {
-  /*fast_bin has pointers to chunks from 16 bytes to 512 bytes incremented by 8 bytes ie 16, 24, 32 ... 512.*/
-  // void *fast_bin[63];
-  int a;
+  /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 16, 32, 48 ... 1024.*/
+  void *fast_bin[64];
   struct _th_cache *next;
   struct _th_cache *prev;
 } th_cache_t; // thread local storage
 
 typedef struct _memalloc_ctx {
-  /*th_cache points at the thread specific data block of the thread that first called memalloc*/
-  th_cache_t *th_cache;
   pthread_key_t th_key;
   pthread_once_t once;
   /*Beginning of the heap memory region*/
@@ -51,6 +50,15 @@ void init_once(void) {
   }
 }
 
+static void *fastbin_block_assign(int offset) {
+  /*16 byte header field and memory to be returned at 16 byte boundary. The block assigned should be huge enough
+   * to allocate 10 times of s.*/
+  int s = 16 * (offset + 1) + 16 * 10;
+  void *cur_top = memalloc_ctx.top;
+  memalloc_ctx.top = cur_top + s;
+  return cur_top;
+}
+
 void *memalloc(size_t size) {
   // should run once
   int c = pthread_once(&memalloc_ctx.once, init_once);
@@ -79,27 +87,30 @@ void *memalloc(size_t size) {
       perror("pthread_setspecific");
     }
   }
-  tcache->a = size;
+  int offset = size <= 16 ? 0 : ceil((float)(size - 16) / 16);
+  void *block = *(tcache->fast_bin + offset);
+  if (!block) {
+    block = fastbin_block_assign(offset);
+  }
+
   return tcache;
 }
 
 void *func(void *p) {
-  th_cache_t *t = memalloc(10);
-  printf("from func: %d\n", t->a);
+  th_cache_t *t = memalloc(32);
   return NULL;
 }
 
 void *func1(void *p) {
   th_cache_t *t = memalloc(12);
-  printf("from func1: %d\n", t->a);
   return NULL;
 }
 
 int main(void) {
-  pthread_t th, th1, th2;
+  pthread_t th;
   pthread_create(&th, NULL, func, NULL);
-  pthread_create(&th1, NULL, func1, NULL);
+  // pthread_create(&th1, NULL, func1, NULL);
   pthread_join(th, NULL);
-  pthread_join(th1, NULL);
+  // pthread_join(th1, NULL);
   return 0;
 }
