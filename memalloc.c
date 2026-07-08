@@ -9,9 +9,16 @@
 #include <string.h>
 #include <unistd.h>
 
+typedef struct _el_fastbin {
+  /*Points at the starting address of the fastbin block of a specified size.*/
+  void *block;
+  /*Freelist of the fastbin of the specified size.*/
+  void *freelist;
+} el_fastbin_t;
+
 typedef struct _th_cache {
   /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 16, 32, 48 ... 1024.*/
-  void *fast_bin[64];
+  el_fastbin_t fast_bin[64];
   struct _th_cache *next;
   struct _th_cache *prev;
 } th_cache_t; // thread local storage
@@ -88,9 +95,10 @@ void *memalloc(size_t size) {
     }
   }
   int offset = size <= 16 ? 0 : ceil((float)(size - 16) / 16);
-  void *block = *(tcache->fast_bin + offset);
-  if (!block) {
-    block = fastbin_block_assign(offset);
+
+  el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
+  if (!fastbin_slot->block) {
+    fastbin_slot->block = fastbin_block_assign(offset);
   }
 
   return tcache;
