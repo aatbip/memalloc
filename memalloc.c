@@ -77,19 +77,23 @@ void init_once(void) {
   }
 }
 
-/*Returns a block from the address space of `size` bytes.*/
-static void *fastbin_block_assign(size_t size) {
+/*Returns a block from the address space of `size` bytes-
+ * This function updates the current `top` from memalloc_ctx then returns address
+ * of the previous `top`.*/
+static void *get_block(size_t size) {
   void *cur_top = memalloc_ctx.top;
   memalloc_ctx.top = cur_top + size;
   return cur_top;
 }
 
+/*Fastpath allocation strategy-
+ * Allocate in fastbin.*/
 static void fastpath_allocation(th_cache_t *tcache, int size) {
   int offset = GET_FASTBIN_OFFSET(size);
   el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
   if (!fastbin_slot->block) {
     int block_size = MIN_CHUNK_SIZE * (offset + 1) + CHUNK_HEADER_SIZE * 10;
-    fastbin_slot->block = fastbin_block_assign(offset);
+    fastbin_slot->block = get_block(offset);
     fastbin_slot->freelist = NULL;
   }
 }
