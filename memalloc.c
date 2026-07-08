@@ -62,34 +62,23 @@ static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
 
 /*Increments the program break then updates required members in `memalloc_ctx`. For now increments equivalent to page
  * size (4k). Should make more flexible later on!*/
-static void incr_pgbrk() {
-  void *block = sbrk(4096);
+static void incr_pgbrk(size_t size) {
+  void *block = sbrk(size);
   if (block == (void *)-1) {
     perror("sbrk");
   }
-  memalloc_ctx.heap = block;
+  if (!memalloc_ctx.heap)
+    memalloc_ctx.heap = block;
   memalloc_ctx.top = block;
-}
-
-/*Function parameter to pass in pthread_once.*/
-static void init_once(void) {
-  incr_pgbrk(); // this can be sent to get_block
-
-  int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
-  if (c != 0) {
-    perror("pthread_mutex_init");
-  }
-
-  c = pthread_key_create(&memalloc_ctx.th_key, NULL);
-  if (c != 0) {
-    perror("pthread_key_create");
-  }
 }
 
 /*Returns a block from the address space of `size` bytes-
  * This function updates the current `top` from memalloc_ctx then returns address
  * of the previous `top`.*/
 static void *get_block(size_t size) {
+  if (!memalloc_ctx.heap || memalloc_ctx.top == sbrk(0)) {
+    incr_pgbrk(4096);
+  }
   void *cur_top = memalloc_ctx.top;
   memalloc_ctx.top = cur_top + size;
   return cur_top;
@@ -118,6 +107,20 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   return chunk + sizeof(size_t) + CHUNK_PAD;
 }
 
+/*Function parameter to pass in pthread_once.*/
+static void init_once(void) {
+  int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
+  if (c != 0) {
+    perror("pthread_mutex_init");
+  }
+
+  c = pthread_key_create(&memalloc_ctx.th_key, NULL);
+  if (c != 0) {
+    perror("pthread_key_create");
+  }
+}
+
+/*Initialize thread specific cache block and required meta data*/
 void *init_tcache() {
   int c = pthread_once(&memalloc_ctx.once, init_once);
   if (c != 0) {
@@ -188,13 +191,12 @@ int main(void) {
   for (int i = 0; i < 3; i++) {
     printf("%d ", s[i]);
   }
+  printf("\n");
 
-  // printf("1: %d\n", *((char *)t - 16));
-  // printf("1: %d\n", *((char *)s - 16));
-  // pthread_t th, th1;
-  // pthread_create(&th, NULL, func, NULL);
-  // pthread_create(&th1, NULL, func1, NULL);
-  // pthread_join(th, NULL);
-  // pthread_join(th1, NULL);
+  pthread_t th, th1;
+  pthread_create(&th, NULL, func, NULL);
+  pthread_create(&th1, NULL, func1, NULL);
+  pthread_join(th, NULL);
+  pthread_join(th1, NULL);
   return 0;
 }
