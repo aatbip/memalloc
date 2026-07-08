@@ -57,14 +57,19 @@ typedef struct _memalloc_ctx {
 
 static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
 
-void init_once(void) {
-  // setup initial heap memory region of 4k
+/*Increments the program break. For now increments equivalent to page size (4k). Should
+ * make more flexible later on!*/
+void incr_pgbrk() {
   void *block = sbrk(4096);
   if (block == (void *)-1) {
     perror("sbrk");
   }
   memalloc_ctx.heap = block;
   memalloc_ctx.top = block;
+}
+
+void init_once(void) {
+  incr_pgbrk();
 
   int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
   if (c != 0) {
@@ -92,7 +97,7 @@ static void fastpath_allocation(th_cache_t *tcache, int size) {
   int offset = GET_FASTBIN_OFFSET(size);
   el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
   if (!fastbin_slot->block) {
-    int block_size = MIN_CHUNK_SIZE * (offset + 1) + CHUNK_HEADER_SIZE * 10;
+    int block_size = MIN_CHUNK_SIZE * (offset + 1) + CHUNK_HEADER_SIZE * INITIAL_CHUNK_COUNT;
     fastbin_slot->block = get_block(offset);
     fastbin_slot->freelist = NULL;
   }
@@ -109,7 +114,7 @@ void *memalloc(size_t size) {
   // allocate
   if (!tcache) {
     pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
-    tcache = memalloc_ctx.top;
+    tcache = get_block(sizeof(th_cache_t));
     if (!memalloc_ctx.recent_th_cache) {
       tcache->next = NULL;
       tcache->prev = NULL;
@@ -119,7 +124,6 @@ void *memalloc(size_t size) {
       tcache->next = NULL;
     }
     memalloc_ctx.recent_th_cache = tcache;
-    memalloc_ctx.top = memalloc_ctx.top + sizeof(th_cache_t);
     pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
     int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
     if (c != 0) {
