@@ -118,14 +118,13 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   return chunk + sizeof(size_t) + CHUNK_PAD;
 }
 
-void *memalloc(size_t size) {
+void *init_tcache() {
   int c = pthread_once(&memalloc_ctx.once, init_once);
   if (c != 0) {
     perror("pthread_once");
   }
   th_cache_t *tcache;
   tcache = pthread_getspecific(memalloc_ctx.th_key);
-  // allocate
   if (!tcache) {
     pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
     tcache = get_block(sizeof(th_cache_t));
@@ -144,6 +143,11 @@ void *memalloc(size_t size) {
       perror("pthread_setspecific");
     }
   }
+  return tcache;
+}
+
+void *memalloc(size_t size) {
+  th_cache_t *tcache = init_tcache();
 
   /*Follow fastpath for allocation request of size <=FASTPATH_MAX_LIMIT*/
   if (size <= FASTBIN_MAX_LIMIT) {
