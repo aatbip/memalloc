@@ -111,9 +111,9 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
     return fastbin_slot->freelist;
   }
   void *chunk = fastbin_slot->top;
-  int *p = chunk;
+  size_t *p = chunk;
   *p = fastbin_size;
-  return chunk + CHUNK_PAD;
+  return chunk + sizeof(size_t) + CHUNK_PAD;
 }
 
 void *memalloc(size_t size) {
@@ -153,20 +153,21 @@ void *memalloc(size_t size) {
 
 void *func(void *p) {
   void *t = memalloc(32);
-  printf("here: %d\n", *((char *)t - 16));
+  printf("func: %d\n", *((char *)t - 16));
   return NULL;
 }
 
 void *func1(void *p) {
-  th_cache_t *t = memalloc(12);
+  void *t = memalloc(12);
+  printf("func1: %d\n", *((char *)t - 16));
   return NULL;
 }
 
 int main(void) {
-  pthread_t th;
+  pthread_t th, th1;
   pthread_create(&th, NULL, func, NULL);
-  // pthread_create(&th1, NULL, func1, NULL);
+  pthread_create(&th1, NULL, func1, NULL);
   pthread_join(th, NULL);
-  // pthread_join(th1, NULL);
+  pthread_join(th1, NULL);
   return 0;
 }
