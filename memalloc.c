@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #define MIN_CHUNK_SIZE 16
+#define CHUNK_PAD 8 // 8 bytes padding in chunk for alignment to 16 bytes boundary
 
 /*The fastbin block size should be equivalent to fit upto 10 chunks.*/
 #define INITIAL_CHUNK_COUNT 10
@@ -34,6 +35,8 @@ typedef struct _el_fastbin {
   void *block;
   /*Freelist of the fastbin of the specified size.*/
   void *freelist;
+  /*Top of the used block*/
+  void *top;
 } el_fastbin_t;
 
 typedef struct _th_cache {
@@ -57,9 +60,9 @@ typedef struct _memalloc_ctx {
 
 static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
 
-/*Increments the program break. For now increments equivalent to page size (4k). Should
- * make more flexible later on!*/
-void incr_pgbrk() {
+/*Increments the program break then updates required members in `memalloc_ctx`. For now increments equivalent to page
+ * size (4k). Should make more flexible later on!*/
+static void incr_pgbrk() {
   void *block = sbrk(4096);
   if (block == (void *)-1) {
     perror("sbrk");
@@ -68,8 +71,9 @@ void incr_pgbrk() {
   memalloc_ctx.top = block;
 }
 
-void init_once(void) {
-  incr_pgbrk();
+/*Function parameter to pass in pthread_once.*/
+static void init_once(void) {
+  incr_pgbrk(); // this can be sent to get_block
 
   int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
   if (c != 0) {
@@ -93,18 +97,26 @@ static void *get_block(size_t size) {
 
 /*Fastpath allocation strategy-
  * Allocate in fastbin.*/
-static void fastpath_allocation(th_cache_t *tcache, int size) {
+static void *fastpath_allocation(th_cache_t *tcache, int size) {
   int offset = GET_FASTBIN_OFFSET(size);
+  int fastbin_size = MIN_CHUNK_SIZE * (offset + 1);
   el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
   if (!fastbin_slot->block) {
-    int block_size = MIN_CHUNK_SIZE * (offset + 1) + CHUNK_HEADER_SIZE * INITIAL_CHUNK_COUNT;
-    fastbin_slot->block = get_block(offset);
+    int block_size = (fastbin_size + CHUNK_HEADER_SIZE) * INITIAL_CHUNK_COUNT;
+    fastbin_slot->block = get_block(block_size);
     fastbin_slot->freelist = NULL;
+    fastbin_slot->top = fastbin_slot->block;
   }
+  if (fastbin_slot->freelist) {
+    return fastbin_slot->freelist;
+  }
+  void *chunk = fastbin_slot->top;
+  int *p = chunk;
+  *p = fastbin_size;
+  return chunk + CHUNK_PAD;
 }
 
 void *memalloc(size_t size) {
-  // should run once
   int c = pthread_once(&memalloc_ctx.once, init_once);
   if (c != 0) {
     perror("pthread_once");
@@ -133,14 +145,15 @@ void *memalloc(size_t size) {
 
   /*Follow fastpath for allocation request of size <=FASTPATH_MAX_LIMIT*/
   if (size <= FASTBIN_MAX_LIMIT) {
-    fastpath_allocation(tcache, size);
+    return fastpath_allocation(tcache, size);
   }
 
-  return tcache;
+  return NULL;
 }
 
 void *func(void *p) {
-  th_cache_t *t = memalloc(32);
+  void *t = memalloc(32);
+  printf("here: %d\n", *((char *)t - 16));
   return NULL;
 }
 
