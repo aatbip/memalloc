@@ -3,11 +3,31 @@
 #include "memalloc.h"
 #include <math.h>
 #include <pthread.h>
+#include <stdalign.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
+#define MIN_CHUNK_SIZE 16
+
+/*The fastbin block size should be equivalent to fit upto 10 chunks.*/
+#define INITIAL_CHUNK_COUNT 10
+
+/* Header layout (16 bytes):
+ *
+ * ---------------------
+ * size_t size (8 bytes)
+ * ---------------------
+ * Padding (8 bytes)
+ * ---------------------*/
+#define CHUNK_HEADER_SIZE 16
+
+/*Fast path for allocation request of size <=1024 bytes*/
+#define FASTBIN_MAX_LIMIT 1024
+
+#define GET_FASTBIN_OFFSET(size) (size <= 16 ? 0 : ceil((float)(size - MIN_CHUNK_SIZE) / MIN_CHUNK_SIZE));
 
 typedef struct _el_fastbin {
   /*Points at the starting address of the fastbin block of a specified size.*/
@@ -57,13 +77,21 @@ void init_once(void) {
   }
 }
 
-static void *fastbin_block_assign(int offset) {
-  /*16 byte header field and memory to be returned at 16 byte boundary. The block assigned should be huge enough
-   * to allocate 10 times of s.*/
-  int s = 16 * (offset + 1) + 16 * 10;
+/*Returns a block from the address space of `size` bytes.*/
+static void *fastbin_block_assign(size_t size) {
   void *cur_top = memalloc_ctx.top;
-  memalloc_ctx.top = cur_top + s;
+  memalloc_ctx.top = cur_top + size;
   return cur_top;
+}
+
+static void fastpath_allocation(th_cache_t *tcache, int size) {
+  int offset = GET_FASTBIN_OFFSET(size);
+  el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
+  if (!fastbin_slot->block) {
+    int block_size = MIN_CHUNK_SIZE * (offset + 1) + CHUNK_HEADER_SIZE * 10;
+    fastbin_slot->block = fastbin_block_assign(offset);
+    fastbin_slot->freelist = NULL;
+  }
 }
 
 void *memalloc(size_t size) {
@@ -94,11 +122,10 @@ void *memalloc(size_t size) {
       perror("pthread_setspecific");
     }
   }
-  int offset = size <= 16 ? 0 : ceil((float)(size - 16) / 16);
 
-  el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
-  if (!fastbin_slot->block) {
-    fastbin_slot->block = fastbin_block_assign(offset);
+  /*Follow fastpath for allocation request of size <=FASTPATH_MAX_LIMIT*/
+  if (size <= FASTBIN_MAX_LIMIT) {
+    fastpath_allocation(tcache, size);
   }
 
   return tcache;
