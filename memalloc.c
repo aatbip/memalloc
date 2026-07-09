@@ -85,7 +85,7 @@ static void *get_block(size_t size) {
   /* Increment heap by PAGE_SIZE if the currently unused heap region is not enough for the block `size` request
    * i.e. `sbrk(0)-memalloc_ctx.top <= size`
    * Note: The `incr_pgbr` policy might need to be updated or rethink later on!*/
-  if (sbrk(0) - memalloc_ctx.top <= size) {
+  if ((char *)sbrk(0) - (char *)memalloc_ctx.top <= size) {
     incr_pgbrk(PAGE_SIZE);
   }
   void *cur_top = memalloc_ctx.top;
