@@ -62,29 +62,30 @@ typedef struct _memalloc_ctx {
 
 static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
 
-/*Increments the program break then updates required members in `memalloc_ctx`. For now increments equivalent to page
- * size (4k). Should make more flexible later on!*/
+/*Increments the program break then updates required members in `memalloc_ctx`*/
 static void incr_pgbrk(size_t size) {
   void *block = sbrk(size);
   if (block == (void *)-1) {
     perror("sbrk");
   }
-  if (!memalloc_ctx.heap)
+  if (!memalloc_ctx.heap && !memalloc_ctx.top) {
     memalloc_ctx.heap = block;
-  memalloc_ctx.top = block;
+    memalloc_ctx.top = block;
+  }
 }
 
 /*Returns a block from the address space of `size` bytes-
  * This function updates the current `top` from memalloc_ctx then returns address
  * of the previous `top`.*/
 static void *get_block(size_t size) {
-  /* Get PAGE_SIZE heap beforehand:
-   * -if heap is not yet incremented i.e. `memalloc_ctx.heap == NULL`
-   * -if the whole of preincremented heap region is used i.e. `memalloc_ctx.top == sbrk(0)`
-   * -if the currently unused heap region is not enough for the block `size` request
-   *  i.e. `sbrk(0)-memalloc_ctx.top <= size`
-   *   */
-  if (!memalloc_ctx.heap || memalloc_ctx.top == sbrk(0) || sbrk(0) - memalloc_ctx.top <= size) {
+  /*Get a huge heap (4 times PAGE_SIZE) if heap is being incremented the very first time.
+  if (!memalloc_ctx.heap && !memalloc_ctx.top) {
+    incr_pgbrk(PAGE_SIZE * 4);
+  }
+  /* Increment heap by PAGE_SIZE if the currently unused heap region is not enough for the block `size` request
+   * i.e. `sbrk(0)-memalloc_ctx.top <= size`
+   * Note: The `incr_pgbr` policy might need to be updated or rethink later on!*/
+  if (sbrk(0) - memalloc_ctx.top <= size) {
     incr_pgbrk(PAGE_SIZE);
   }
   void *cur_top = memalloc_ctx.top;
