@@ -104,15 +104,43 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   int offset = GET_FASTBIN_OFFSET(size);
   int fastbin_size = MIN_CHUNK_SIZE * (offset + 1);
   int chunk_size = fastbin_size + CHUNK_HEADER_SIZE;
+  int block_size = chunk_size * INITIAL_CHUNK_COUNT;
   el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
+
+  if (fastbin_slot->freelist) {
+    // todo: also update the freelist pointer accordingly later on!
+    return FASTBIN_DATA_BLOCK(fastbin_slot->freelist);
+  }
+
   if (!fastbin_slot->block) {
-    int block_size = chunk_size * INITIAL_CHUNK_COUNT;
     fastbin_slot->block = get_block(block_size);
     fastbin_slot->freelist = NULL;
     fastbin_slot->top = fastbin_slot->block;
   }
-  if (fastbin_slot->freelist) {
-    return FASTBIN_DATA_BLOCK(fastbin_slot->freelist);
+
+  if ((char *)fastbin_slot->block + block_size == fastbin_slot->top) {
+    /*This condition is true if allocation request for this `size` for a thread has been more than
+     * INITIAL_CHUNK_COUNT times. So, there are already INITIAL_CHUNK_COUNT number of chunks of a specific `size`
+     * allocated from a thread. In this case, we will `get_block` and then point at the new block from the last chunk's
+     * padding bytes of the previous block.
+     * Making use of the padding bytes as a next pointer will save space in the `el_fastbin_t` struct. The reason for
+     * using the last chunk instead of the initial chunk is because of the "belief" that temporal locality may get
+     * preserved since the last chunk is the recently allocated memory, however, this also highly depends on the
+     * program's allocation pattern.
+     *
+     * Todo [improvement]: May be later on we can steal the block from other fastbin_slot of the same tcache or even
+     * fastbin_slot of another tcache probably. For ex: If 16 bytes and 32 bytes are allocated in the fast path and then
+     * already upto 10 allocation requests are made for 16 bytes size but only a few 32 bytes allocations are made then
+     * we can steal chunks from 32 bytes block of the same or different tcache.
+     * i.e. first try, steal_block() if not possible then back to get_block()
+     */
+
+    void *new_block = get_block(block_size);
+    void *prev_block_last_chunk = (char *)fastbin_slot->block + block_size - chunk_size;
+    void **padding_byte = (void *)((char *)prev_block_last_chunk + sizeof(size_t));
+    *padding_byte = new_block;
+
+    fastbin_slot->top = *padding_byte;
   }
   void *chunk = fastbin_slot->top;
   size_t *p = chunk;
@@ -207,10 +235,16 @@ int main(void) {
   // }
   // printf("\n");
 
-  pthread_t th, th1;
-  pthread_create(&th, NULL, func, NULL);
+  // pthread_t th, th1;
+  // pthread_create(&th, NULL, func, NULL);
   // pthread_create(&th1, NULL, func1, NULL);
-  pthread_join(th, NULL);
+  // pthread_join(th, NULL);
   // pthread_join(th1, NULL);
+  for (int i = 0; i < 10; i++) {
+    memalloc(4);
+  }
+  int *p = memalloc(4);
+  printf("func1: %zu\n", *(size_t *)((char *)p - 16));
+  // printf("size: %zu\n", sbrk(0) - memalloc_ctx.heap);
   return 0;
 }
