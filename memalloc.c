@@ -18,14 +18,17 @@
 /*The fastbin block size should be equivalent to fit upto 10 chunks.*/
 #define INITIAL_CHUNK_COUNT 10
 
-/* Header layout (16 bytes):
+/* Header (16 bytes) and data block layout:
  *
- * ---------------------
+ * --------------------->chunk
  * size_t size (8 bytes)
  * ---------------------
  * Padding (8 bytes)
- * ---------------------*/
+ * ---------------------
+ * FASTBIN_DATA_BLOCK
+ *  */
 #define CHUNK_HEADER_SIZE 16
+#define FASTBIN_DATA_BLOCK(chunk) ((char *)chunk + sizeof(size_t) + CHUNK_PAD)
 
 /*Fast path for allocation request of size <=1024 bytes*/
 #define FASTBIN_MAX_LIMIT 1024
@@ -109,13 +112,13 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
     fastbin_slot->top = fastbin_slot->block;
   }
   if (fastbin_slot->freelist) {
-    return (char *)fastbin_slot->freelist + sizeof(size_t) + CHUNK_PAD;
+    return FASTBIN_DATA_BLOCK(fastbin_slot->freelist);
   }
   void *chunk = fastbin_slot->top;
   size_t *p = chunk;
   *p = fastbin_size;
   fastbin_slot->top += chunk_size;
-  return (char *)chunk + sizeof(size_t) + CHUNK_PAD;
+  return FASTBIN_DATA_BLOCK(chunk);
 }
 
 /*Function parameter to pass in pthread_once.*/
