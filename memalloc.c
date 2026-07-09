@@ -78,6 +78,7 @@ static void incr_pgbrk(size_t size) {
  * This function updates the current `top` from memalloc_ctx then returns address
  * of the previous `top`.*/
 static void *get_block(size_t size) {
+  pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
   /*Get a huge heap (4 times PAGE_SIZE) if heap is being incremented the very first time.*/
   if (!memalloc_ctx.heap && !memalloc_ctx.top) {
     incr_pgbrk(PAGE_SIZE * 4);
@@ -90,6 +91,7 @@ static void *get_block(size_t size) {
   }
   void *cur_top = memalloc_ctx.top;
   memalloc_ctx.top = cur_top + size;
+  pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
   return cur_top;
 }
 
@@ -138,12 +140,12 @@ void *init_tcache() {
   th_cache_t *tcache;
   tcache = pthread_getspecific(memalloc_ctx.th_key);
   if (!tcache) {
-    pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
     tcache = get_block(sizeof(th_cache_t));
     if (!memalloc_ctx.recent_th_cache) {
       tcache->next = NULL;
       tcache->prev = NULL;
     } else {
+      pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
       memalloc_ctx.recent_th_cache->next = tcache;
       tcache->prev = memalloc_ctx.recent_th_cache;
       tcache->next = NULL;
@@ -170,9 +172,9 @@ void *memalloc(size_t size) {
 }
 
 void *func(void *p) {
-  void *t = memalloc(12);
+  void *t = memalloc(20);
   printf("func: %d\n", *((char *)t - 16));
-  void *s = memalloc(12);
+  void *s = memalloc(20);
   printf("func a: %d\n", *((char *)s - 16));
   return NULL;
 }
