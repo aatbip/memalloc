@@ -10,6 +10,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#define PAGE_SIZE 4096 // 4K
+
 #define MIN_CHUNK_SIZE 16
 #define CHUNK_PAD 8 // 8 bytes padding in chunk for alignment to 16 bytes boundary
 
@@ -28,7 +30,7 @@
 /*Fast path for allocation request of size <=1024 bytes*/
 #define FASTBIN_MAX_LIMIT 1024
 
-#define GET_FASTBIN_OFFSET(size) (size <= 16 ? 0 : ceil((float)(size - MIN_CHUNK_SIZE) / MIN_CHUNK_SIZE));
+#define GET_FASTBIN_OFFSET(size) (size <= 16 ? 0 : ceil((float)(size - MIN_CHUNK_SIZE) / MIN_CHUNK_SIZE))
 
 typedef struct _el_fastbin {
   /*Points at the starting address of the fastbin block of a specified size.*/
@@ -76,8 +78,14 @@ static void incr_pgbrk(size_t size) {
  * This function updates the current `top` from memalloc_ctx then returns address
  * of the previous `top`.*/
 static void *get_block(size_t size) {
-  if (!memalloc_ctx.heap || memalloc_ctx.top == sbrk(0)) {
-    incr_pgbrk(4096);
+  /* Get PAGE_SIZE heap beforehand:
+   * -if heap is not yet incremented i.e. `memalloc_ctx.heap == NULL`
+   * -if the whole of preincremented heap region is used i.e. `memalloc_ctx.top == sbrk(0)`
+   * -if the currently unused heap region is not enough for the block `size` request
+   *  i.e. `sbrk(0)-memalloc_ctx.top <= size`
+   *   */
+  if (!memalloc_ctx.heap || memalloc_ctx.top == sbrk(0) || sbrk(0) - memalloc_ctx.top <= size) {
+    incr_pgbrk(PAGE_SIZE);
   }
   void *cur_top = memalloc_ctx.top;
   memalloc_ctx.top = cur_top + size;
