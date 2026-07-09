@@ -30,7 +30,7 @@
 /*Fast path for allocation request of size <=1024 bytes*/
 #define FASTBIN_MAX_LIMIT 1024
 
-#define GET_FASTBIN_OFFSET(size) (size <= 16 ? 0 : ceil((float)(size - MIN_CHUNK_SIZE) / MIN_CHUNK_SIZE))
+#define GET_FASTBIN_OFFSET(size) ((size - 1) / MIN_CHUNK_SIZE)
 
 typedef struct _el_fastbin {
   /*Points at the starting address of the fastbin block of a specified size.*/
@@ -109,13 +109,13 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
     fastbin_slot->top = fastbin_slot->block;
   }
   if (fastbin_slot->freelist) {
-    return fastbin_slot->freelist;
+    return (char *)fastbin_slot->freelist + sizeof(size_t) + CHUNK_PAD;
   }
   void *chunk = fastbin_slot->top;
   size_t *p = chunk;
   *p = fastbin_size;
   fastbin_slot->top += chunk_size;
-  return chunk + sizeof(size_t) + CHUNK_PAD;
+  return (char *)chunk + sizeof(size_t) + CHUNK_PAD;
 }
 
 /*Function parameter to pass in pthread_once.*/
@@ -172,42 +172,42 @@ void *memalloc(size_t size) {
 }
 
 void *func(void *p) {
-  void *t = memalloc(20);
-  printf("func: %d\n", *((char *)t - 16));
-  void *s = memalloc(20);
-  printf("func a: %d\n", *((char *)s - 16));
+  void *t = memalloc(16);
+  printf("func: %zu\n", *(size_t *)((char *)t - 16));
+  // void *s = memalloc(20);
+  // printf("func a: %zu\n", *(size_t *)((char *)s - 16));
   return NULL;
 }
 
 void *func1(void *p) {
   void *t = memalloc(12);
-  printf("func1: %d\n", *((char *)t - 16));
+  printf("func1: %zu\n", *(size_t *)((char *)t - 16));
   void *s = memalloc(12);
-  printf("func1 a: %d\n", *((char *)s - 16));
+  printf("func1: %zu\n", *(size_t *)((char *)s - 16));
   return NULL;
 }
 
 int main(void) {
-  int *t = (int *)memalloc(sizeof(int) * 3);
-  t[0] = 1;
-  t[1] = 2;
-  t[2] = 3;
-  for (int i = 0; i < 3; i++) {
-    printf("%d ", t[i]);
-  }
-  int *s = (int *)memalloc(sizeof(int) * 3);
-  s[0] = 4;
-  s[1] = 5;
-  s[2] = 6;
-  for (int i = 0; i < 3; i++) {
-    printf("%d ", s[i]);
-  }
-  printf("\n");
+  // int *t = (int *)memalloc(sizeof(int) * 3);
+  // t[0] = 1;
+  // t[1] = 2;
+  // t[2] = 3;
+  // for (int i = 0; i < 3; i++) {
+  //   printf("%d ", t[i]);
+  // }
+  // int *s = (int *)memalloc(sizeof(int) * 3);
+  // s[0] = 4;
+  // s[1] = 5;
+  // s[2] = 6;
+  // for (int i = 0; i < 3; i++) {
+  //   printf("%d ", s[i]);
+  // }
+  // printf("\n");
 
   pthread_t th, th1;
   pthread_create(&th, NULL, func, NULL);
-  pthread_create(&th1, NULL, func1, NULL);
+  // pthread_create(&th1, NULL, func1, NULL);
   pthread_join(th, NULL);
-  pthread_join(th1, NULL);
+  // pthread_join(th1, NULL);
   return 0;
 }
