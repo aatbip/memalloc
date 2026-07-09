@@ -119,14 +119,14 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   }
 
   if ((char *)fastbin_slot->block + block_size == fastbin_slot->top) {
-    /*This condition is true if allocation request for this `size` for a thread has been more than
+    /*This condition is true if allocation request of a `size` for a thread has been more than
      * INITIAL_CHUNK_COUNT times. So, there are already INITIAL_CHUNK_COUNT number of chunks of a specific `size`
-     * allocated from a thread. In this case, we will `get_block` and then point at the new block from the last chunk's
-     * padding bytes of the previous block.
-     * Making use of the padding bytes as a next pointer will save space in the `el_fastbin_t` struct. The reason for
-     * using the last chunk instead of the initial chunk is because of the "belief" that temporal locality may get
-     * preserved since the last chunk is the recently allocated memory, however, this also highly depends on the
-     * program's allocation pattern.
+     * allocated in a fastbin of a thread. In this case, the allocator first gets the new block using `get_block`.
+     * Then it updates (links) the padding bytes of the first chunk of the new block to the `fastbin_slot->block`.
+     * Then updates `fastbin_slot->block` to point at the new block.
+     *
+     * Making use of the padding bytes as a next pointer will save space in the `el_fastbin_t` struct. The reason
+     * for using the first chunk for this is to follow spatial locality principle.
      *
      * Todo [improvement]: May be later on we can steal the block from other fastbin_slot of the same tcache or even
      * fastbin_slot of another tcache probably. For ex: If 16 bytes and 32 bytes are allocated in the fast path and then
@@ -136,11 +136,11 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
      */
 
     void *new_block = get_block(block_size);
-    void *prev_block_last_chunk = (char *)fastbin_slot->block + block_size - chunk_size;
-    void **padding_byte = (void *)((char *)prev_block_last_chunk + sizeof(size_t));
-    *padding_byte = new_block;
+    void **padding_byte = (void *)((char *)new_block + sizeof(size_t));
+    *padding_byte = fastbin_slot->block;
 
-    fastbin_slot->top = *padding_byte;
+    fastbin_slot->block = new_block;
+    fastbin_slot->top = new_block;
   }
   void *chunk = fastbin_slot->top;
   size_t *p = chunk;
@@ -240,11 +240,22 @@ int main(void) {
   // pthread_create(&th1, NULL, func1, NULL);
   // pthread_join(th, NULL);
   // pthread_join(th1, NULL);
+
   for (int i = 0; i < 10; i++) {
-    memalloc(4);
+    if (i == 0) {
+      int *p = memalloc(10);
+      *p = 51;
+    } else {
+      memalloc(10);
+    }
   }
-  int *p = memalloc(4);
-  printf("func1: %zu\n", *(size_t *)((char *)p - 16));
+  int *p = memalloc(10);
+
+  void **pad = (void *)((char *)p - 8);
+  int *d = (int *)((char *)*pad + 16);
+  printf("h: %d\n", *d);
+
+  printf("func1: %zu\n", *((size_t *)((char *)p - 8) + 16));
   // printf("size: %zu\n", sbrk(0) - memalloc_ctx.heap);
   return 0;
 }
