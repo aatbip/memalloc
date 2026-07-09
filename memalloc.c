@@ -241,7 +241,7 @@ int main(void) {
   // pthread_join(th, NULL);
   // pthread_join(th1, NULL);
 
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 100; i++) {
     if (i == 0) {
       int *p = memalloc(10);
       *p = 51;
@@ -249,13 +249,6 @@ int main(void) {
       memalloc(10);
     }
   }
-  int *p = memalloc(10);
-
-  void **pad = (void *)((char *)p - 8);
-  int *d = (int *)((char *)*pad + 16);
-  printf("h: %d\n", *d);
-
-  printf("func1: %zu\n", *((size_t *)((char *)p - 8) + 16));
-  // printf("size: %zu\n", sbrk(0) - memalloc_ctx.heap);
+  printf("size: %zu\n", sbrk(0) - memalloc_ctx.heap);
   return 0;
 }
