@@ -77,7 +77,7 @@ static void incr_pgbrk(size_t size) {
   }
 }
 
-/*Returns a block from the address space of `size` bytes-
+/*Returns a block of `size` bytes from the address space-
  * This function updates the current `top` from memalloc_ctx then returns address
  * of the previous `top`.*/
 static void *get_block(size_t size) {
@@ -119,7 +119,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   }
 
   if ((char *)fastbin_slot->block + block_size == fastbin_slot->top) {
-    /*This condition is true if allocation request of a `size` for a thread has been more than
+    /*This condition is true if allocation request of a `size` bytes from a thread has been more than
      * INITIAL_CHUNK_COUNT times. So, there are already INITIAL_CHUNK_COUNT number of chunks of a specific `size`
      * allocated in a fastbin of a thread. In this case, the allocator first gets the new block using `get_block`.
      * Then it updates (links) the padding bytes of the first chunk of the new block to the `fastbin_slot->block`.
@@ -136,6 +136,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
      */
 
     void *new_block = get_block(block_size);
+    /*Padding byte of the new block's first chunk*/
     void **padding_byte = (void *)((char *)new_block + sizeof(size_t));
     *padding_byte = fastbin_slot->block;
 
