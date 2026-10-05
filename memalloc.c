@@ -102,9 +102,9 @@ static void *get_block(size_t size) {
  * Allocate in fastbin.*/
 static void *fastpath_allocation(th_cache_t *tcache, int size) {
   int offset = GET_FASTBIN_OFFSET(size);
-  int fastbin_size = MIN_CHUNK_SIZE * (offset + 1);
-  int chunk_size = fastbin_size + CHUNK_HEADER_SIZE;
-  int block_size = chunk_size * INITIAL_CHUNK_COUNT;
+  int block_size = MIN_CHUNK_SIZE * (offset + 1);
+  int chunk_size = block_size + CHUNK_HEADER_SIZE;
+  int fastbin_size = chunk_size * INITIAL_CHUNK_COUNT;
   el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
 
   if (fastbin_slot->freelist) {
@@ -113,12 +113,12 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   }
 
   if (!fastbin_slot->block) {
-    fastbin_slot->block = get_block(block_size);
+    fastbin_slot->block = get_block(fastbin_size);
     fastbin_slot->freelist = NULL;
     fastbin_slot->top = fastbin_slot->block;
   }
 
-  if ((char *)fastbin_slot->block + block_size == fastbin_slot->top) {
+  if ((char *)fastbin_slot->block + fastbin_size == fastbin_slot->top) {
     /*This condition is true if allocation request of a `size` bytes from a thread has been more than
      * INITIAL_CHUNK_COUNT times. So, there are already INITIAL_CHUNK_COUNT number of chunks of a specific `size`
      * allocated in a fastbin of a thread. In this case, the allocator first gets the new block using `get_block`.
@@ -135,7 +135,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
      * i.e. first try, steal_block() if not possible then back to get_block()
      */
 
-    void *new_block = get_block(block_size);
+    void *new_block = get_block(fastbin_size);
     /*Padding byte of the new block's first chunk*/
     void **padding_byte = (void *)((char *)new_block + sizeof(size_t));
     *padding_byte = fastbin_slot->block;
