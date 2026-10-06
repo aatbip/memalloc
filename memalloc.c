@@ -29,7 +29,7 @@
  *  */
 #define CHUNK_HEADER_SIZE 16
 #define FASTBIN_DATA_BLOCK(chunk) ((char *)chunk + sizeof(size_t) + CHUNK_PAD)
-#define GET_CHUNK_SIZE(chunk) *((char *)chunk - (sizeof(size_t) + CHUNK_PAD))
+#define GET_HEADER_POINTER(chunk) ((char *)chunk - (sizeof(size_t) + CHUNK_PAD))
 
 /*Fast path for allocation request of size <=1024 bytes*/
 #define FASTBIN_MAX_LIMIT 1024
@@ -153,6 +153,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
 
 /*Function parameter to pass in pthread_once.*/
 static void init_once(void) {
+  printf("i run\n");
   int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
   if (c != 0) {
     perror("pthread_mutex_init");
@@ -194,8 +195,13 @@ void *init_tcache() {
 }
 
 void free(void *chunk) {
-  //
-  size_t chunk_size = GET_CHUNK_SIZE(chunk);
+  void *header = GET_HEADER_POINTER(chunk);
+  size_t chunk_size = *(size_t *)header;
+
+  th_cache_t *tcache = init_tcache();
+  int offset = GET_FASTBIN_OFFSET(chunk_size - CHUNK_HEADER_SIZE);
+  el_fastbin_t *fastbin_t = tcache->fast_bin + offset;
+  fastbin_t->freelist = header;
 }
 
 void *memalloc(size_t size) {
