@@ -111,7 +111,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   if (fastbin_slot->freelist) {
     // todo: also update the freelist pointer accordingly later on!
     void *cur = fastbin_slot->freelist;
-    fastbin_slot->freelist = cur;
+    fastbin_slot->freelist = *(void **)((char *)cur + CHUNK_HEADER_SIZE);
     return FASTBIN_DATA_BLOCK(cur);
   }
 
