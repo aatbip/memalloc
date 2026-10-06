@@ -110,7 +110,9 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
 
   if (fastbin_slot->freelist) {
     // todo: also update the freelist pointer accordingly later on!
-    return FASTBIN_DATA_BLOCK(fastbin_slot->freelist);
+    void *cur = fastbin_slot->freelist;
+    fastbin_slot->freelist = cur;
+    return FASTBIN_DATA_BLOCK(cur);
   }
 
   if (!fastbin_slot->block) {
@@ -200,7 +202,7 @@ void fastbin_free(void *header, size_t chunk_size) {
   el_fastbin_t *fastbin_t = tcache->fast_bin + offset;
   void *cur = fastbin_t->freelist;
   fastbin_t->freelist = header;
-  header = cur;
+  *(void **)((char *)header + CHUNK_HEADER_SIZE) = cur;
 }
 
 void free(void *chunk) {
@@ -224,7 +226,9 @@ void *memalloc(size_t size) {
 
 int main(void) {
   int *p = memalloc(sizeof(*p));
+  *p = 59;
   free(p);
+  int *q = memalloc(sizeof(*q));
 
   return 0;
 }
