@@ -7,3 +7,10 @@ memalloc: memalloc.c memalloc.h
 run: memalloc
 	@echo "======================" 
 	./$^
+
+memalloc_tsan: memalloc.c memalloc.h
+	${CC} -O1 -g -fsanitize=thread $< -o $@ -pthread
+
+run_tsan: memalloc_tsan
+	@echo "======================" 
+	./$^
