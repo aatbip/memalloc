@@ -29,6 +29,7 @@
  *  */
 #define CHUNK_HEADER_SIZE 16
 #define FASTBIN_DATA_BLOCK(chunk) ((char *)chunk + sizeof(size_t) + CHUNK_PAD)
+#define GET_CHUNK_SIZE(chunk) *((char *)chunk - (sizeof(size_t) + CHUNK_PAD))
 
 /*Fast path for allocation request of size <=1024 bytes*/
 #define FASTBIN_MAX_LIMIT 1024
@@ -145,7 +146,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   }
   void *chunk = fastbin_slot->top;
   size_t *p = chunk;
-  *p = fastbin_size;
+  *p = chunk_size;
   fastbin_slot->top += chunk_size;
   return FASTBIN_DATA_BLOCK(chunk);
 }
@@ -192,6 +193,11 @@ void *init_tcache() {
   return tcache;
 }
 
+void free(void *chunk) {
+  //
+  size_t chunk_size = GET_CHUNK_SIZE(chunk);
+}
+
 void *memalloc(size_t size) {
   th_cache_t *tcache = init_tcache();
 
@@ -203,53 +209,9 @@ void *memalloc(size_t size) {
   return NULL;
 }
 
-void *func(void *p) {
-  void *t = memalloc(16);
-  printf("func: %zu\n", *(size_t *)((char *)t - 16));
-  // void *s = memalloc(20);
-  // printf("func a: %zu\n", *(size_t *)((char *)s - 16));
-  return NULL;
-}
-
-void *func1(void *p) {
-  void *t = memalloc(12);
-  printf("func1: %zu\n", *(size_t *)((char *)t - 16));
-  void *s = memalloc(12);
-  printf("func1: %zu\n", *(size_t *)((char *)s - 16));
-  return NULL;
-}
-
 int main(void) {
-  // int *t = (int *)memalloc(sizeof(int) * 3);
-  // t[0] = 1;
-  // t[1] = 2;
-  // t[2] = 3;
-  // for (int i = 0; i < 3; i++) {
-  //   printf("%d ", t[i]);
-  // }
-  // int *s = (int *)memalloc(sizeof(int) * 3);
-  // s[0] = 4;
-  // s[1] = 5;
-  // s[2] = 6;
-  // for (int i = 0; i < 3; i++) {
-  //   printf("%d ", s[i]);
-  // }
-  // printf("\n");
+  int *p = memalloc(sizeof(*p));
+  free(p);
 
-  // pthread_t th, th1;
-  // pthread_create(&th, NULL, func, NULL);
-  // pthread_create(&th1, NULL, func1, NULL);
-  // pthread_join(th, NULL);
-  // pthread_join(th1, NULL);
-
-  for (int i = 0; i < 100; i++) {
-    if (i == 0) {
-      int *p = memalloc(10);
-      *p = 51;
-    } else {
-      memalloc(10);
-    }
-  }
-  printf("size: %zu\n", sbrk(0) - memalloc_ctx.heap);
   return 0;
 }
