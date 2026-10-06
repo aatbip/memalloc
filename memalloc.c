@@ -194,14 +194,21 @@ void *init_tcache() {
   return tcache;
 }
 
-void free(void *chunk) {
-  void *header = GET_HEADER_POINTER(chunk);
-  size_t chunk_size = *(size_t *)header;
-
+void fastbin_free(void *header, size_t chunk_size) {
   th_cache_t *tcache = init_tcache();
   int offset = GET_FASTBIN_OFFSET(chunk_size - CHUNK_HEADER_SIZE);
   el_fastbin_t *fastbin_t = tcache->fast_bin + offset;
+  void *cur = fastbin_t->freelist;
   fastbin_t->freelist = header;
+  header = cur;
+}
+
+void free(void *chunk) {
+  void *header = GET_HEADER_POINTER(chunk);
+  size_t chunk_size = *(size_t *)header;
+  if (chunk_size <= FASTBIN_MAX_LIMIT) {
+    fastbin_free(header, chunk_size);
+  }
 }
 
 void *memalloc(size_t size) {
