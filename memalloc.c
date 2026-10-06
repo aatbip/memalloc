@@ -109,7 +109,6 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   el_fastbin_t *fastbin_slot = tcache->fast_bin + offset;
 
   if (fastbin_slot->freelist) {
-    // todo: also update the freelist pointer accordingly later on!
     void *cur = fastbin_slot->freelist;
     fastbin_slot->freelist = *(void **)((char *)cur + CHUNK_HEADER_SIZE);
     return FASTBIN_DATA_BLOCK(cur);
@@ -155,7 +154,6 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
 
 /*Function parameter to pass in pthread_once.*/
 static void init_once(void) {
-  printf("i run\n");
   int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
   if (c != 0) {
     perror("pthread_mutex_init");
@@ -177,11 +175,11 @@ void *init_tcache() {
   tcache = pthread_getspecific(memalloc_ctx.th_key);
   if (!tcache) {
     tcache = get_block(sizeof(th_cache_t));
+    pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
     if (!memalloc_ctx.recent_th_cache) {
       tcache->next = NULL;
       tcache->prev = NULL;
     } else {
-      pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
       memalloc_ctx.recent_th_cache->next = tcache;
       tcache->prev = memalloc_ctx.recent_th_cache;
       tcache->next = NULL;
@@ -205,7 +203,7 @@ void fastbin_free(void *header, size_t chunk_size) {
   *(void **)((char *)header + CHUNK_HEADER_SIZE) = cur;
 }
 
-void free(void *chunk) {
+void my_free(void *chunk) {
   void *header = GET_HEADER_POINTER(chunk);
   size_t chunk_size = *(size_t *)header;
   if (chunk_size <= FASTBIN_MAX_LIMIT) {
@@ -225,10 +223,7 @@ void *memalloc(size_t size) {
 }
 
 int main(void) {
-  int *p = memalloc(sizeof(*p));
-  *p = 59;
-  free(p);
-  int *q = memalloc(sizeof(*q));
+  memalloc(sizeof(int));
 
   return 0;
 }
