@@ -203,7 +203,7 @@ void fastbin_free(void *header, size_t chunk_size) {
   *(void **)((char *)header + CHUNK_HEADER_SIZE) = cur;
 }
 
-void my_free(void *chunk) {
+void memfree(void *chunk) {
   void *header = GET_HEADER_POINTER(chunk);
   size_t chunk_size = *(size_t *)header;
   if (chunk_size <= FASTBIN_MAX_LIMIT) {
