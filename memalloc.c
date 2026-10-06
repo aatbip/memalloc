@@ -222,8 +222,26 @@ void *memalloc(size_t size) {
   return NULL;
 }
 
+void *th1(void *arg) {
+  int *p = memalloc(sizeof(int));
+  *p = 31;
+  printf("p: %d\n", *p);
+  return NULL;
+}
+
+void *th2(void *arg) {
+  int *q = memalloc(sizeof(int));
+  *q = 59;
+  printf("q: %d\n", *q);
+  return NULL;
+}
+
 int main(void) {
-  memalloc(sizeof(int));
+  pthread_t t1, t2;
+  pthread_create(&t1, NULL, th1, NULL);
+  pthread_create(&t2, NULL, th2, NULL);
+  pthread_join(t1, NULL);
+  pthread_join(t2, NULL);
 
   return 0;
 }
