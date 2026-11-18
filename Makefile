@@ -16,7 +16,7 @@ run_tsan: memalloc_tsan
 	@echo "======================" 
 	./$^
 
-CC_ASAN_FLAGS = -O1 -g -fsanitize=address,undefined -o
+CC_ASAN_FLAGS = -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -o
 memalloc_asan: memalloc.c memalloc.h
 	${CC} $< ${CC_ASAN_FLAGS} $@
 

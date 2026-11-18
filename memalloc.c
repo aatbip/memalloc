@@ -7,7 +7,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <threads.h>
 #include <unistd.h>
 
 #define PAGE_SIZE 4096 // 4K
@@ -45,12 +47,21 @@ typedef struct _el_fastbin {
   void *top;
 } el_fastbin_t;
 
+// typedef struct _th_cache {
+//   /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 16, 32, 48 ... 1024.*/
+//   el_fastbin_t fast_bin[64];
+//   struct _th_cache *next;
+//   struct _th_cache *prev;
+// } th_cache_t; // thread specific data (TSD)
+
 typedef struct _th_cache {
   /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 16, 32, 48 ... 1024.*/
   el_fastbin_t fast_bin[64];
   struct _th_cache *next;
   struct _th_cache *prev;
-} th_cache_t; // thread local storage
+} th_cache_t; // thread local storage (TLS)
+
+_Thread_local th_cache_t *tcache;
 
 typedef struct _memalloc_ctx {
   pthread_key_t th_key;
@@ -153,26 +164,26 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
 }
 
 /*Function parameter to pass in pthread_once.*/
-static void init_once(void) {
-  int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
-  if (c != 0) {
-    perror("pthread_mutex_init");
-  }
-
-  c = pthread_key_create(&memalloc_ctx.th_key, NULL);
-  if (c != 0) {
-    perror("pthread_key_create");
-  }
-}
+// static void init_once(void) {
+//   int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
+//   if (c != 0) {
+//     perror("pthread_mutex_init");
+//   }
+//
+//   c = pthread_key_create(&memalloc_ctx.th_key, NULL);
+//   if (c != 0) {
+//     perror("pthread_key_create");
+//   }
+// }
 
 /*Initialize thread specific cache block and required meta data*/
 void *init_tcache() {
-  int c = pthread_once(&memalloc_ctx.once, init_once);
-  if (c != 0) {
-    perror("pthread_once");
-  }
-  th_cache_t *tcache;
-  tcache = pthread_getspecific(memalloc_ctx.th_key);
+  // int c = pthread_once(&memalloc_ctx.once, init_once);
+  // if (c != 0) {
+  //   perror("pthread_once");
+  // }
+  // th_cache_t *tcache;
+  // tcache = pthread_getspecific(memalloc_ctx.th_key);
   if (!tcache) {
     tcache = get_block(sizeof(th_cache_t));
     pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
@@ -186,10 +197,10 @@ void *init_tcache() {
     }
     memalloc_ctx.recent_th_cache = tcache;
     pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
-    int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
-    if (c != 0) {
-      perror("pthread_setspecific");
-    }
+    // int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
+    // if (c != 0) {
+    //   perror("pthread_setspecific");
+    // }
   }
   return tcache;
 }
@@ -223,16 +234,18 @@ void *memalloc(size_t size) {
 }
 
 void *th1(void *arg) {
-  int *p = memalloc(sizeof(int));
-  *p = 31;
-  printf("p: %d\n", *p);
+  printf("pointer: %p\n", tcache);
+  int *p = memalloc(sizeof(int)); // 16
+  printf("size: %zu\n", *(size_t *)((char *)p - CHUNK_HEADER_SIZE));
+  printf("pointer after: %p\n", tcache);
   return NULL;
 }
 
 void *th2(void *arg) {
-  int *q = memalloc(sizeof(int));
-  *q = 59;
-  printf("q: %d\n", *q);
+  printf("pointer th2: %p\n", tcache);
+  void *q = memalloc(24); // 48
+  printf("size: %zu\n", *(size_t *)((char *)q - CHUNK_HEADER_SIZE));
+  printf("pointer after th2: %p\n", tcache);
   return NULL;
 }
 
@@ -242,6 +255,5 @@ int main(void) {
   pthread_create(&t2, NULL, th2, NULL);
   pthread_join(t1, NULL);
   pthread_join(t2, NULL);
-
   return 0;
 }
