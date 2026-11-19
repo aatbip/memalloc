@@ -47,13 +47,6 @@ typedef struct _el_fastbin {
   void *top;
 } el_fastbin_t;
 
-// typedef struct _th_cache {
-//   /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 16, 32, 48 ... 1024.*/
-//   el_fastbin_t fast_bin[64];
-//   struct _th_cache *next;
-//   struct _th_cache *prev;
-// } th_cache_t; // thread specific data (TSD)
-
 typedef struct _th_cache {
   /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 16, 32, 48 ... 1024.*/
   el_fastbin_t fast_bin[64];
@@ -163,27 +156,8 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   return FASTBIN_DATA_BLOCK(chunk);
 }
 
-/*Function parameter to pass in pthread_once.*/
-// static void init_once(void) {
-//   int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
-//   if (c != 0) {
-//     perror("pthread_mutex_init");
-//   }
-//
-//   c = pthread_key_create(&memalloc_ctx.th_key, NULL);
-//   if (c != 0) {
-//     perror("pthread_key_create");
-//   }
-// }
-
 /*Initialize thread specific cache block and required meta data*/
 void *init_tcache() {
-  // int c = pthread_once(&memalloc_ctx.once, init_once);
-  // if (c != 0) {
-  //   perror("pthread_once");
-  // }
-  // th_cache_t *tcache;
-  // tcache = pthread_getspecific(memalloc_ctx.th_key);
   if (!tcache) {
     tcache = get_block(sizeof(th_cache_t));
     pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
@@ -197,10 +171,6 @@ void *init_tcache() {
     }
     memalloc_ctx.recent_th_cache = tcache;
     pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
-    // int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
-    // if (c != 0) {
-    //   perror("pthread_setspecific");
-    // }
   }
   return tcache;
 }
