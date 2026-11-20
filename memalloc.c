@@ -57,6 +57,8 @@ typedef struct _th_cache {
 _Thread_local th_cache_t *tcache;
 
 typedef struct _memalloc_ctx {
+  pthread_key_t th_key;
+  pthread_once_t once;
   /*Beginning of the heap memory region*/
   void *heap;
   /*Pointer to the top of the used heap*/
@@ -66,7 +68,7 @@ typedef struct _memalloc_ctx {
   pthread_mutex_t mtx_memalloc_ctx_t;
 } memalloc_ctx_t;
 
-static memalloc_ctx_t memalloc_ctx;
+static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
 
 /*Increments the program break then updates required members in `memalloc_ctx`*/
 static void incr_pgbrk(size_t size) {
@@ -154,8 +156,27 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   return FASTBIN_DATA_BLOCK(chunk);
 }
 
+void thread_exit_destr(void *arg) {}
+
+/*Function parameter to pass in pthread_once.*/
+static void init_once(void) {
+  int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
+  if (c != 0) {
+    perror("pthread_mutex_init");
+  }
+
+  c = pthread_key_create(&memalloc_ctx.th_key, thread_exit_destr);
+  if (c != 0) {
+    perror("pthread_key_create");
+  }
+}
+
 /*Initialize thread specific cache block and required meta data*/
 void *init_tcache() {
+  int c = pthread_once(&memalloc_ctx.once, init_once);
+  if (c != 0) {
+    perror("pthread_once");
+  }
   if (!tcache) {
     tcache = get_block(sizeof(th_cache_t));
     pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
@@ -169,6 +190,10 @@ void *init_tcache() {
     }
     memalloc_ctx.recent_th_cache = tcache;
     pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
+    int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
+    if (c != 0) {
+      perror("pthread_setspecific");
+    }
   }
   return tcache;
 }
@@ -202,18 +227,17 @@ void *memalloc(size_t size) {
 }
 
 void *th1(void *arg) {
-  printf("pointer: %p\n", tcache);
   int *p = memalloc(sizeof(int)); // 16
-  printf("size: %zu\n", *(size_t *)((char *)p - CHUNK_HEADER_SIZE));
-  printf("pointer after: %p\n", tcache);
+  *p = 91;
+  printf("size(th1): %zu\n", *(size_t *)((char *)p - CHUNK_HEADER_SIZE));
+  printf("pointer after(th1): %p\n", tcache);
   return NULL;
 }
 
 void *th2(void *arg) {
-  printf("pointer th2: %p\n", tcache);
   void *q = memalloc(24); // 48
-  printf("size: %zu\n", *(size_t *)((char *)q - CHUNK_HEADER_SIZE));
-  printf("pointer after th2: %p\n", tcache);
+  printf("size(th2): %zu\n", *(size_t *)((char *)q - CHUNK_HEADER_SIZE));
+  printf("pointer after(th2): %p\n", tcache);
   return NULL;
 }
 
