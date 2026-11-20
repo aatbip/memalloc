@@ -57,8 +57,6 @@ typedef struct _th_cache {
 _Thread_local th_cache_t *tcache;
 
 typedef struct _memalloc_ctx {
-  pthread_key_t th_key;
-  pthread_once_t once;
   /*Beginning of the heap memory region*/
   void *heap;
   /*Pointer to the top of the used heap*/
@@ -68,7 +66,7 @@ typedef struct _memalloc_ctx {
   pthread_mutex_t mtx_memalloc_ctx_t;
 } memalloc_ctx_t;
 
-static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
+static memalloc_ctx_t memalloc_ctx;
 
 /*Increments the program break then updates required members in `memalloc_ctx`*/
 static void incr_pgbrk(size_t size) {
