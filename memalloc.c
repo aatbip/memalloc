@@ -156,7 +156,17 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   return FASTBIN_DATA_BLOCK(chunk);
 }
 
-void thread_exit_destr(void *arg) {}
+/*Runs once a thread returns or cancels. This function can be used to handle the tcache after thread returns and
+ * probably the chunks. Possible things to do here:
+ *-what happens to tcache when thread dies? will it be tracked to be reused later?
+ *-what happens to the fastbin chunks allocated in this tcache? will the unused chunks be reused to given back to the
+ OS? how to handle the chunks that are possibly being used "stolen" by other threads (tcaches)?*/
+void thread_exit_destr(void *arg) {
+  char *msg = "thread_exit_destr()\n";
+  if (write(STDOUT_FILENO, msg, strlen(msg)) < strlen(msg)) {
+    perror("thread_exit_destr: write()\n");
+  };
+}
 
 /*Function parameter to pass in pthread_once.*/
 static void init_once(void) {
