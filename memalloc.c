@@ -283,18 +283,16 @@ void *memalloc(size_t size) {
 }
 
 void *th1(void *arg) {
-  int *p = memalloc(sizeof(int)); // 16
-  *p = 91;
-  printf("size(th1): %zu\n", *(size_t *)((char *)p - CHUNK_HEADER_SIZE));
-  printf("pointer after(th1): %p\n", tcache);
+  int *p = memalloc(sizeof(int));
+  *p = 2;
+  printf("p: %d\n", *p);
   return NULL;
 }
 
 void *th2(void *arg) {
-  void *q = memalloc(24); // 48
-  *(int *)q = 22;
-  printf("size(th2): %zu\n", *(size_t *)((char *)q - CHUNK_HEADER_SIZE));
-  printf("pointer after(th2): %p\n", tcache);
+  int *q = memalloc(sizeof(int));
+  *q = 3;
+  printf("q: %d\n", *q);
   return NULL;
 }
 
@@ -304,5 +302,14 @@ int main(void) {
   pthread_create(&t2, NULL, th2, NULL);
   pthread_join(t1, NULL);
   pthread_join(t2, NULL);
+  int m = *(int *)((
+      char *)(((el_fastbin_t)((th_cache_t *)(memalloc_ctx.tcache_page + sizeof(th_cache_t)))->fast_bin[0]).block +
+              CHUNK_HEADER_SIZE));
+
+  int n = *(int *)((char *)(((el_fastbin_t)((th_cache_t *)(memalloc_ctx.tcache_page))->fast_bin[0]).block +
+                            CHUNK_HEADER_SIZE));
+  printf("m: %d\n", m);
+  printf("n: %d\n", n);
+
   return 0;
 }
