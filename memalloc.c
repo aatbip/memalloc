@@ -66,6 +66,8 @@ typedef struct _memalloc_ctx {
   /*Pointer to the recently created thread cache block*/
   th_cache_t *recent_th_cache;
   pthread_mutex_t mtx_memalloc_ctx_t;
+  /*No. of configured processors in the system*/
+  int nproc;
 } memalloc_ctx_t;
 
 static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
@@ -183,10 +185,7 @@ static void init_once(void) {
 
 /*Initialize thread specific cache block and required meta data*/
 void *init_tcache() {
-  int c = pthread_once(&memalloc_ctx.once, init_once);
-  if (c != 0) {
-    perror("pthread_once");
-  }
+  pthread_once(&memalloc_ctx.once, init_once);
   if (!tcache) {
     tcache = get_block(sizeof(th_cache_t));
     pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
