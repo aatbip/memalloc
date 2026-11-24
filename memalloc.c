@@ -181,6 +181,16 @@ static void init_once(void) {
   if (c != 0) {
     perror("pthread_key_create");
   }
+
+  /*If MEMTUNABLE_NPROC is not applied then initialize it to the active processor count.*/
+  if (!memalloc_ctx.nproc) {
+    printf("i run??sdfjlk");
+    c = sysconf(_SC_NPROCESSORS_CONF);
+    if (c == -1) {
+      perror("sysconf");
+    }
+    memalloc_ctx.nproc = c;
+  }
 }
 
 /*Initialize thread specific cache block and required meta data*/
@@ -216,6 +226,14 @@ void fastbin_free(void *header, size_t chunk_size) {
   *(void **)((char *)header + CHUNK_HEADER_SIZE) = cur;
 }
 
+int memtunable(int tunable_param, int value) {
+  if (__builtin_expect(tunable_param == MEMTUNABLE_NPROC, 1)) {
+    memalloc_ctx.nproc = value;
+    return 0;
+  }
+  return -1;
+}
+
 void memfree(void *chunk) {
   void *header = GET_HEADER_POINTER(chunk);
   size_t chunk_size = *(size_t *)header;
@@ -238,15 +256,16 @@ void *memalloc(size_t size) {
 void *th1(void *arg) {
   int *p = memalloc(sizeof(int)); // 16
   *p = 91;
-  printf("size(th1): %zu\n", *(size_t *)((char *)p - CHUNK_HEADER_SIZE));
-  printf("pointer after(th1): %p\n", tcache);
+  // printf("size(th1): %zu\n", *(size_t *)((char *)p - CHUNK_HEADER_SIZE));
+  // printf("pointer after(th1): %p\n", tcache);
   return NULL;
 }
 
 void *th2(void *arg) {
   void *q = memalloc(24); // 48
-  printf("size(th2): %zu\n", *(size_t *)((char *)q - CHUNK_HEADER_SIZE));
-  printf("pointer after(th2): %p\n", tcache);
+  *(int *)q = 22;
+  // printf("size(th2): %zu\n", *(size_t *)((char *)q - CHUNK_HEADER_SIZE));
+  // printf("pointer after(th2): %p\n", tcache);
   return NULL;
 }
 
