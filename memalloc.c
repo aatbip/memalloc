@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <threads.h>
 #include <unistd.h>
 
@@ -63,8 +64,13 @@ typedef struct _memalloc_ctx {
   void *heap;
   /*Pointer to the top of the used heap*/
   void *top;
-  /*Pointer to the recently created thread cache block*/
+  /*Pointer to the recently created thread cache block. Used to manage doubly linked list for tcache blocks.*/
   th_cache_t *recent_th_cache;
+  /*Pointer to the beginning of the tcache pages block*/
+  void *tcache_page;
+  /*Pointer to the beginning of the unused tcache pages block*/
+  void *tcache_unused_page;
+
   pthread_mutex_t mtx_memalloc_ctx_t;
   /*No. of configured processors in the system*/
   int nproc;
@@ -170,6 +176,27 @@ void thread_exit_destr(void *arg) {
   };
 }
 
+/*Allocate a block for tcache from the tcache page. This tcache block is thread specific (TLS)*/
+void *get_tcache_block() {
+  if (!memalloc_ctx.tcache_page)
+    return NULL;
+  void *block = memalloc_ctx.tcache_unused_page;
+  memalloc_ctx.tcache_unused_page = memalloc_ctx.tcache_unused_page + sizeof(th_cache_t);
+  return block;
+}
+
+/*mmap pages to allocate tcache blocks for the threads. In this tcache pages, thread specific tcache blocks are placed
+ * and managed as doubly linked list objects.*/
+void *tcache_pages_mmap() {
+  int s = sizeof(th_cache_t);
+  int tcache_pages = (memalloc_ctx.nproc * s + PAGE_SIZE - 1) / PAGE_SIZE; // required vm pages
+  void *block = mmap(NULL, s * tcache_pages, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (block == MAP_FAILED) {
+    perror("mmap");
+  };
+  return block;
+}
+
 /*Function parameter to pass in pthread_once.*/
 static void init_once(void) {
   int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
@@ -184,20 +211,22 @@ static void init_once(void) {
 
   /*If MEMTUNABLE_NPROC is not applied then initialize it to the active processor count.*/
   if (!memalloc_ctx.nproc) {
-    printf("i run??sdfjlk");
     c = sysconf(_SC_NPROCESSORS_CONF);
     if (c == -1) {
       perror("sysconf");
     }
     memalloc_ctx.nproc = c;
   }
+
+  memalloc_ctx.tcache_page = tcache_pages_mmap();
+  memalloc_ctx.tcache_unused_page = memalloc_ctx.tcache_page;
 }
 
 /*Initialize thread specific cache block and required meta data*/
 void *init_tcache() {
   pthread_once(&memalloc_ctx.once, init_once);
   if (!tcache) {
-    tcache = get_block(sizeof(th_cache_t));
+    tcache = get_tcache_block();
     pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
     if (!memalloc_ctx.recent_th_cache) {
       tcache->next = NULL;
@@ -256,16 +285,16 @@ void *memalloc(size_t size) {
 void *th1(void *arg) {
   int *p = memalloc(sizeof(int)); // 16
   *p = 91;
-  // printf("size(th1): %zu\n", *(size_t *)((char *)p - CHUNK_HEADER_SIZE));
-  // printf("pointer after(th1): %p\n", tcache);
+  printf("size(th1): %zu\n", *(size_t *)((char *)p - CHUNK_HEADER_SIZE));
+  printf("pointer after(th1): %p\n", tcache);
   return NULL;
 }
 
 void *th2(void *arg) {
   void *q = memalloc(24); // 48
   *(int *)q = 22;
-  // printf("size(th2): %zu\n", *(size_t *)((char *)q - CHUNK_HEADER_SIZE));
-  // printf("pointer after(th2): %p\n", tcache);
+  printf("size(th2): %zu\n", *(size_t *)((char *)q - CHUNK_HEADER_SIZE));
+  printf("pointer after(th2): %p\n", tcache);
   return NULL;
 }
 
