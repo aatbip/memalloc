@@ -48,7 +48,7 @@ typedef struct _el_fastbin {
   void *top;
 } el_fastbin_t;
 
-typedef struct _th_cache {
+typedef struct __attribute__((aligned(64))) _th_cache {
   /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 16, 32, 48 ... 1024.*/
   el_fastbin_t fast_bin[64];
   struct _th_cache *next;
@@ -298,7 +298,8 @@ void *th2(void *arg) {
 }
 
 int main(void) {
-  printf("align of: %zu\n", alignof(max_align_t));
+  printf("align of: %zu\n", alignof(th_cache_t));
+  printf("sizeof: %zu\n", sizeof(th_cache_t));
   pthread_t t1, t2;
   pthread_create(&t1, NULL, th1, NULL);
   pthread_create(&t2, NULL, th2, NULL);
