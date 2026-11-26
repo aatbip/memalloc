@@ -19,7 +19,7 @@
 #define CHUNK_PAD 8 // 8 bytes padding in chunk for alignment to 16 bytes boundary
 
 /*The fastbin block size should be equivalent to fit upto 10 chunks.*/
-#define INITIAL_CHUNK_COUNT 10
+#define INITIAL_CHUNK_COUNT 16
 
 /* Header (16 bytes) and data block layout:
  *
@@ -49,7 +49,7 @@ typedef struct _el_fastbin {
 } el_fastbin_t;
 
 typedef struct __attribute__((aligned(64))) _th_cache {
-  /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 16, 32, 48 ... 1024.*/
+  /*fast_bin has pointers to chunks from 16 bytes to 1024 bytes spaced at 16 bytes ie 32, 48 ... 1024.*/
   el_fastbin_t fast_bin[64];
   struct _th_cache *next;
   struct _th_cache *prev;
@@ -283,36 +283,8 @@ void *memalloc(size_t size) {
   return NULL;
 }
 
-void *th1(void *arg) {
-  int *p = memalloc(sizeof(int));
-  *p = 2;
-  printf("p: %d\n", *p);
-  return NULL;
-}
-
-void *th2(void *arg) {
-  int *q = memalloc(sizeof(int));
-  *q = 3;
-  printf("q: %d\n", *q);
-  return NULL;
-}
-
 int main(void) {
-  printf("align of: %zu\n", alignof(th_cache_t));
-  printf("sizeof: %zu\n", sizeof(th_cache_t));
-  pthread_t t1, t2;
-  pthread_create(&t1, NULL, th1, NULL);
-  pthread_create(&t2, NULL, th2, NULL);
-  pthread_join(t1, NULL);
-  pthread_join(t2, NULL);
-  int m = *(int *)((
-      char *)(((el_fastbin_t)((th_cache_t *)(memalloc_ctx.tcache_page + sizeof(th_cache_t)))->fast_bin[0]).block +
-              CHUNK_HEADER_SIZE));
-
-  int n = *(int *)((char *)(((el_fastbin_t)((th_cache_t *)(memalloc_ctx.tcache_page))->fast_bin[0]).block +
-                            CHUNK_HEADER_SIZE));
-  printf("m: %d\n", m);
-  printf("n: %d\n", n);
+  void *p = memalloc(17);
 
   return 0;
 }
