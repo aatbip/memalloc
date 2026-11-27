@@ -185,8 +185,7 @@ void *get_tcache_block() {
 void *tcache_pages_mmap() {
   int s = sizeof(th_cache_t);
   int tcache_pages = (memalloc_ctx.nproc * s + PAGE_SIZE - 1) / PAGE_SIZE; // required vm pages
-  void *block =
-      mmap(NULL, PAGE_SIZE * tcache_pages, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  void *block = mmap(NULL, PAGE_SIZE * tcache_pages, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (block == MAP_FAILED) {
     err_exit("mmap");
   };
