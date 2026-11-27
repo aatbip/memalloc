@@ -254,7 +254,6 @@ void *init_tcache() {
 }
 
 void fastbin_free(void *header, size_t chunk_size) {
-  th_cache_t *tcache = init_tcache();
   int offset = GET_FASTBIN_OFFSET(chunk_size - CHUNK_HEADER_SIZE);
   el_fastbin_t *fastbin_t = tcache->fast_bin + offset;
   void *cur = fastbin_t->freelist;
@@ -290,7 +289,27 @@ void *memalloc(size_t size) {
 }
 
 int main(void) {
-  memalloc(sizeof(int));
+  int *p;
+  for (int i = 0; i < 16; i++) {
+    if (i == 14) {
+      int *s = memalloc(sizeof(int));
+      *s = 99;
+    } else if (i == 15) {
+      p = memalloc(sizeof(int));
+      printf("here: %p\n", p);
+      *p = 221;
+    } else
+      memalloc(sizeof(int));
+  }
+  int *a = memalloc(sizeof(int));
+  int *b = memalloc(sizeof(int));
+  memfree(a);
+  memfree(b);
+  memfree(p);
+
+  printf("p: %p\n", p);
+  int *t = memalloc(sizeof(int));
+  printf("res: %d\n", *(int *)((char *)t - 32));
 
   return 0;
 }
