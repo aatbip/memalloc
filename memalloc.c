@@ -83,10 +83,11 @@ static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
 /*Returns a block of `size` bytes from the current 64KB fastbin arena*/
 static void *get_block_fastbin_arena(size_t size) {
   pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
-  if ((char *)memalloc_ctx.fastbin_arena_top + size > (char *)memalloc_ctx.fastbin_arena + FASTBIN_ARENA_SIZE) {
+  if (__builtin_expect(
+          (char *)memalloc_ctx.fastbin_arena_top + size > (char *)memalloc_ctx.fastbin_arena + FASTBIN_ARENA_SIZE, 0)) {
     /*todo:This is the case when 64KB arena can't handle the request due to insufficient space.*/
   }
-  void *block = memalloc_ctx.fastbin_arena;
+  void *block = memalloc_ctx.fastbin_arena_top;
   memalloc_ctx.fastbin_arena_top = (char *)memalloc_ctx.fastbin_arena_top + size;
   pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
   return block;
