@@ -1,6 +1,7 @@
 // memalloc - a general purpose memory allocator
 
 #include "memalloc.h"
+#include <errno.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdalign.h>
@@ -39,6 +40,18 @@
 #define FASTBIN_MAX_LIMIT 1024
 
 #define GET_FASTBIN_OFFSET(size) ((size - 1) / MIN_CHUNK_SIZE)
+
+#define err_exit(msg)                                                                                                  \
+  do {                                                                                                                 \
+    char buf[64];                                                                                                      \
+    strerror_r(errno, buf, 64);                                                                                        \
+    const char *m_ = (msg);                                                                                            \
+    (void)!write(STDERR_FILENO, m_, strlen(m_));                                                                       \
+    (void)!write(STDERR_FILENO, ": ", 2);                                                                              \
+    (void)!write(STDERR_FILENO, buf, strlen(buf));                                                                     \
+    (void)!write(STDERR_FILENO, "\n", 1);                                                                              \
+    exit(EXIT_FAILURE);                                                                                                \
+  } while (0)
 
 typedef struct _el_fastbin {
   /*Points at the starting address of the fastbin block of a specified size.*/
@@ -154,7 +167,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
 void thread_exit_destr(void *arg) {
   char *msg = "thread_exit_destr()\n";
   if (write(STDOUT_FILENO, msg, strlen(msg)) < strlen(msg)) {
-    perror("thread_exit_destr: write()\n");
+    err_exit("thread_exit_destr: write()");
   };
 }
 
@@ -175,7 +188,7 @@ void *tcache_pages_mmap() {
   void *block =
       mmap(NULL, PAGE_SIZE * tcache_pages, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (block == MAP_FAILED) {
-    perror("mmap");
+    err_exit("mmap");
   };
   return block;
 }
@@ -184,19 +197,19 @@ void *tcache_pages_mmap() {
 static void init_once(void) {
   int c = pthread_mutex_init(&memalloc_ctx.mtx_memalloc_ctx_t, NULL);
   if (c != 0) {
-    perror("pthread_mutex_init");
+    err_exit("pthread_mutex_init");
   }
 
   c = pthread_key_create(&memalloc_ctx.th_key, thread_exit_destr);
   if (c != 0) {
-    perror("pthread_key_create");
+    err_exit("pthread_key_create");
   }
 
   /*If MEMTUNABLE_NPROC is not applied then initialize it to the active processor count.*/
   if (!memalloc_ctx.nproc) {
     c = sysconf(_SC_NPROCESSORS_CONF);
     if (c == -1) {
-      perror("sysconf");
+      err_exit("sysconf");
     }
     memalloc_ctx.nproc = c;
   }
@@ -226,7 +239,7 @@ void *init_tcache() {
     if (!memalloc_ctx.fastbin_arena) {
       void *block = mmap(NULL, FASTBIN_ARENA_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       if (block == MAP_FAILED) {
-        perror("mmap");
+        err_exit("mmap");
       };
       memalloc_ctx.fastbin_arena = block;
       memalloc_ctx.fastbin_arena_top = block;
@@ -235,7 +248,7 @@ void *init_tcache() {
     pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
     int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
     if (c != 0) {
-      perror("pthread_setspecific");
+      err_exit("pthread_setspecific");
     }
   }
   return tcache;
@@ -278,7 +291,7 @@ void *memalloc(size_t size) {
 }
 
 int main(void) {
-  void *p = memalloc(8);
+  memalloc(sizeof(int));
 
   return 0;
 }
