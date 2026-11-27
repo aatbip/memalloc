@@ -13,12 +13,13 @@
 #include <threads.h>
 #include <unistd.h>
 
-#define PAGE_SIZE 4096 // 4K
+#define PAGE_SIZE 4096           // 4K
+#define FASTBIN_ARENA_SIZE 65536 // 64K
 
 #define MIN_CHUNK_SIZE 16
 #define CHUNK_PAD 8 // 8 bytes padding in chunk for alignment to 16 bytes boundary
 
-/*The fastbin block size should be equivalent to fit upto 10 chunks.*/
+/*The fastbin block size should be equivalent to fit upto 16 chunks.*/
 #define INITIAL_CHUNK_COUNT 16
 
 /* Header (16 bytes) and data block layout:
@@ -60,16 +61,17 @@ _Thread_local th_cache_t *tcache;
 typedef struct _memalloc_ctx {
   pthread_key_t th_key;
   pthread_once_t once;
-  /*Beginning of the heap memory region*/
-  void *heap;
-  /*Pointer to the top of the used heap*/
-  void *top;
   /*Pointer to the recently created thread cache block. Used to manage doubly linked list for tcache blocks.*/
   th_cache_t *recent_th_cache;
   /*Pointer to the beginning of the tcache pages block*/
   void *tcache_page;
   /*Pointer to the beginning of the unused tcache pages block*/
   void *tcache_unused_page;
+
+  /*Pointer to the beginning of the 64KB fastbin arena*/
+  void *fastbin_arena;
+  /*Pointer to the top of the unused 64KB fastbin arena*/
+  void *fastbin_arena_top;
 
   pthread_mutex_t mtx_memalloc_ctx_t;
   /*No. of configured processors in the system*/
@@ -78,37 +80,16 @@ typedef struct _memalloc_ctx {
 
 static memalloc_ctx_t memalloc_ctx = {.once = PTHREAD_ONCE_INIT};
 
-/*Increments the program break then updates required members in `memalloc_ctx`*/
-static void incr_pgbrk(size_t size) {
-  void *block = sbrk(size);
-  if (block == (void *)-1) {
-    perror("sbrk");
-  }
-  if (!memalloc_ctx.heap && !memalloc_ctx.top) {
-    memalloc_ctx.heap = block;
-    memalloc_ctx.top = block;
-  }
-}
-
-/*Returns a block of `size` bytes from the address space-
- * This function updates the current `top` from memalloc_ctx then returns address
- * of the previous `top`.*/
-static void *get_block(size_t size) {
+/*Returns a block of `size` bytes from the current 64KB fastbin arena*/
+static void *get_block_fastbin_arena(size_t size) {
   pthread_mutex_lock(&memalloc_ctx.mtx_memalloc_ctx_t);
-  /*Get a huge heap (4 times PAGE_SIZE) if heap is being incremented the very first time.*/
-  if (!memalloc_ctx.heap && !memalloc_ctx.top) {
-    incr_pgbrk(PAGE_SIZE * 4);
+  if ((char *)memalloc_ctx.fastbin_arena_top + size > (char *)memalloc_ctx.fastbin_arena + FASTBIN_ARENA_SIZE) {
+    /*todo:This is the case when 64KB arena can't handle the request due to insufficient space.*/
   }
-  /* Increment heap by PAGE_SIZE if the currently unused heap region is not enough for the block `size` request
-   * i.e. `sbrk(0)-memalloc_ctx.top <= size`
-   * Note: The `incr_pgbr` policy might need to be updated or rethink later on!*/
-  if ((char *)sbrk(0) - (char *)memalloc_ctx.top <= size) {
-    incr_pgbrk(PAGE_SIZE);
-  }
-  void *cur_top = memalloc_ctx.top;
-  memalloc_ctx.top = cur_top + size;
+  void *block = memalloc_ctx.fastbin_arena;
+  memalloc_ctx.fastbin_arena_top = (char *)memalloc_ctx.fastbin_arena_top + size;
   pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
-  return cur_top;
+  return block;
 }
 
 /*Fastpath allocation strategy-
@@ -127,7 +108,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
   }
 
   if (!fastbin_slot->block) {
-    fastbin_slot->block = get_block(fastbin_size);
+    fastbin_slot->block = get_block_fastbin_arena(fastbin_size);
     fastbin_slot->freelist = NULL;
     fastbin_slot->top = fastbin_slot->block;
   }
@@ -149,7 +130,7 @@ static void *fastpath_allocation(th_cache_t *tcache, int size) {
      * i.e. first try, steal_block() if not possible then back to get_block()
      */
 
-    void *new_block = get_block(fastbin_size);
+    void *new_block = get_block_fastbin_arena(fastbin_size);
     /*Padding byte of the new block's first chunk*/
     void **padding_byte = (void *)((char *)new_block + sizeof(size_t));
     *padding_byte = fastbin_slot->block;
@@ -238,6 +219,18 @@ void *init_tcache() {
       tcache->next = NULL;
     }
     memalloc_ctx.recent_th_cache = tcache;
+
+    /*Mmap 64KB arena.
+     * Todo: handle the case when this arena is full. Where to do it? */
+    if (!memalloc_ctx.fastbin_arena) {
+      void *block = mmap(NULL, FASTBIN_ARENA_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+      if (block == MAP_FAILED) {
+        perror("mmap");
+      };
+      memalloc_ctx.fastbin_arena = block;
+      memalloc_ctx.fastbin_arena_top = block;
+    }
+
     pthread_mutex_unlock(&memalloc_ctx.mtx_memalloc_ctx_t);
     int c = pthread_setspecific(memalloc_ctx.th_key, tcache);
     if (c != 0) {
@@ -284,7 +277,7 @@ void *memalloc(size_t size) {
 }
 
 int main(void) {
-  void *p = memalloc(17);
+  void *p = memalloc(8);
 
   return 0;
 }
